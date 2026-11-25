@@ -6,7 +6,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -17,6 +24,7 @@ import com.vehiclescanner.scan.ScanState
 import com.vehiclescanner.ui.DatabaseScreen
 import com.vehiclescanner.ui.HistoryScreen
 import com.vehiclescanner.ui.HomeScreen
+import com.vehiclescanner.ui.IntroScreen
 import com.vehiclescanner.ui.ImportScreen
 import com.vehiclescanner.ui.PhotoScreen
 import com.vehiclescanner.ui.ResultsScreen
@@ -29,9 +37,22 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = (application as VehicleScannerApp).container
+        val introPrefs = getSharedPreferences("intro", MODE_PRIVATE)
+        // Full cinematic intro on the very first launch, short intro afterwards.
+        val fullIntro = !introPrefs.getBoolean("full_intro_shown", false)
         setContent {
             val settings by container.settings.state.collectAsStateWithLifecycle()
-            VehicleScannerTheme(settings.theme) { AppNav(container) }
+            var introDone by rememberSaveable { mutableStateOf(false) }
+            VehicleScannerTheme(settings.theme) {
+                if (!introDone) {
+                    IntroScreen(full = fullIntro) {
+                        if (fullIntro) introPrefs.edit().putBoolean("full_intro_shown", true).apply()
+                        introDone = true
+                    }
+                } else {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { AppNav(container) }
+                }
+            }
         }
     }
 }

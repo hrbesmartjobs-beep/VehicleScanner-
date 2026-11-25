@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.VehicleScanner" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/launch_black</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_black</item>
+    </style>
+</resources>

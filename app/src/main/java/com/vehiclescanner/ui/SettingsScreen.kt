@@ -153,7 +153,8 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit) {
 
             SectionTitle("About")
             Card {
-                Text("Vehicle Scanner 1.0.0", style = MaterialTheme.typography.titleSmall)
+                Text("Vehicle Scanner 1.1.0", style = MaterialTheme.typography.titleSmall)
+                Text("Developed by VIGHNESH  ·  © 2026 VIGHNESH. All Rights Reserved.", style = MaterialTheme.typography.bodyMedium)
                 Text("Open-source components: OpenCV (Apache 2.0), TensorFlow Lite (Apache 2.0), AndroidX/Jetpack Compose/Room (Apache 2.0), " +
                     "Coil (Apache 2.0), Google ML Kit Text Recognition (ML Kit Terms of Service, on-device bundled model).",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
