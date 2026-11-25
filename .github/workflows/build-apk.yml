@@ -44,7 +44,7 @@ jobs:
         run: |
           READELF=$(ls "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf)
           rm -rf /tmp/apk && mkdir /tmp/apk
-          unzip -q -o app/build/outputs/apk/release/app-release.apk 'lib/arm64-v8a/*' 'lib/x86_64/*' -d /tmp/apk
+          unzip -q -o app/build/outputs/apk/release/app-release.apk 'lib/arm64-v8a/*' -d /tmp/apk
           echo "### 16 KB page-size check (64-bit libraries)" >> "$GITHUB_STEP_SUMMARY"
           bad=0
           for so in /tmp/apk/lib/*/*.so; do

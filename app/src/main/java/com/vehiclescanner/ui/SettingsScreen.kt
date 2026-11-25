@@ -143,6 +143,22 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit) {
                     enabled = busy == null, modifier = Modifier.fillMaxWidth()) { Text("Restore from backup") }
             }
 
+            SectionTitle("Storage")
+            Card {
+                Text("Keep scan history", style = MaterialTheme.typography.titleSmall)
+                Text("Older scans (photo, plate crops and results) are deleted automatically when the app starts.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val keepOptions = listOf(0 to "Forever", 90 to "90 days", 30 to "30 days")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    keepOptions.forEachIndexed { i, (days, label) ->
+                        SegmentedButton(selected = s.keepScansDays == days, onClick = {
+                            c.settings.update { it.copy(keepScansDays = days) }
+                            if (days > 0) task("Clean up") { "Removed ${c.scanner.deleteOlderThan(days)} old scans" }
+                        }, shape = SegmentedButtonDefaults.itemShape(i, keepOptions.size)) { Text(label) }
+                    }
+                }
+            }
+
             SectionTitle("Privacy")
             Card {
                 Text("All vehicles, photos and results are stored only on this phone. The app has no internet permission and never uploads anything.",
@@ -153,7 +169,7 @@ fun SettingsScreen(c: AppContainer, onBack: () -> Unit) {
 
             SectionTitle("About")
             Card {
-                Text("Vehicle Scanner 1.1.0", style = MaterialTheme.typography.titleSmall)
+                Text("Vehicle Scanner 1.2.0", style = MaterialTheme.typography.titleSmall)
                 Text("Developed by VIGHNESH  ·  © 2026 VIGHNESH. All Rights Reserved.", style = MaterialTheme.typography.bodyMedium)
                 Text("Open-source components: OpenCV (Apache 2.0), TensorFlow Lite (Apache 2.0), AndroidX/Jetpack Compose/Room (Apache 2.0), " +
                     "Coil (Apache 2.0), Google ML Kit Text Recognition (ML Kit Terms of Service, on-device bundled model).",

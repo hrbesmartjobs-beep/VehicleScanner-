@@ -28,6 +28,7 @@ class VehicleScannerApp : Application() {
         container.appScope.launch {
             container.models.ensureStatus()
             container.vehicles.matcher()
+            runCatching { container.scanner.deleteOlderThan(container.settings.state.value.keepScansDays) }
         }
     }
 }

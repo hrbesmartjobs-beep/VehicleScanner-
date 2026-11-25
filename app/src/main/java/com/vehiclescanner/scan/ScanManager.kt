@@ -61,10 +61,11 @@ class ScanManager(
         val n = PlateNormalizer.clean(text)
         if (n.isEmpty()) return null
         val matcher = vehicles.matcher()
-        val status = if (matcher.contains(n)) PlateStatus.MATCH else PlateStatus.NOT_FOUND
+        val hit = matcher.lookup(n)
+        val status = if (hit != null) PlateStatus.MATCH else PlateStatus.NOT_FOUND
         scans.updateResult(r.copy(
             number = n, status = status, confidence = 1f, verified = true,
-            matchedNumber = if (status == PlateStatus.MATCH) n else null,
+            matchedNumber = hit,
             reason = if (PlateNormalizer.isValid(n)) "Verified manually" else "Verified manually (non-standard format)"
         ))
         scans.refreshCounts(r.sessionId)
@@ -84,9 +85,18 @@ class ScanManager(
                 else -> PlateStatus.NOT_FOUND
             }
             if (newStatus != r.status) scans.updateResult(r.copy(status = newStatus,
-                matchedNumber = if (newStatus == PlateStatus.MATCH) r.number else matcher.nearest(r.number)))
+                matchedNumber = matcher.lookup(r.number) ?: matcher.nearest(r.number)))
         }
         scans.refreshCounts(sessionId)
+    }
+
+    /** Delete scans (photos, crops, results) older than [days]. 0 = keep forever. */
+    suspend fun deleteOlderThan(days: Int): Int {
+        if (days <= 0) return 0
+        val cutoff = System.currentTimeMillis() - days * 86_400_000L
+        val old = scans.allSessions().filter { it.timestamp < cutoff }
+        old.forEach { deleteSession(it.id) }
+        return old.size
     }
 
     suspend fun deleteSession(sessionId: Long) {

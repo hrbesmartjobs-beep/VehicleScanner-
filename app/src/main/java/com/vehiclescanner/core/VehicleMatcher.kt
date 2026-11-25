@@ -15,23 +15,31 @@ data class MatchDecision(
 )
 
 /**
- * In-memory matcher over the user's vehicle list. Exact lookup is O(1);
- * near-miss search (edit distance 1, OCR-confusion aware) is linear and only
- * runs when there is no exact match — fast enough for tens of thousands of rows.
+ * In-memory matcher over the user's vehicle list.
+ *
+ * Exact lookup uses a canonical key so "KL7A1234", "KL07A1234" and "KL07A01234"-style
+ * differences in how people type numbers still match. When there is no exact match, an
+ * OCR-aware fuzzy search looks for a saved number that differs only by typical misreads
+ * (8↔B, 0↔O, 5↔S …) or one missing/extra character, so a vehicle that IS in the list is
+ * flagged for REVIEW instead of being reported as NOT FOUND.
  */
 class VehicleMatcher(numbers: Collection<String>) {
 
-    private val exact: HashSet<String> = HashSet(numbers.size * 2)
+    /** canonical key → number as stored in the database */
+    private val exact: HashMap<String, String> = HashMap(numbers.size * 2)
     private val byLength: Map<Int, List<String>>
 
     init {
-        numbers.forEach { exact += it }
-        byLength = exact.groupBy { it.length }
+        numbers.forEach { exact.putIfAbsent(canonical(it), it) }
+        byLength = numbers.distinct().groupBy { it.length }
     }
 
     val size: Int get() = exact.size
 
-    fun contains(normalized: String) = normalized in exact
+    fun contains(normalized: String) = canonical(normalized) in exact
+
+    /** The database's own spelling of [normalized], or null when not saved. */
+    fun lookup(normalized: String): String? = exact[canonical(normalized)]
 
     /**
      * Decide the status of one OCR reading.
@@ -42,69 +50,105 @@ class VehicleMatcher(numbers: Collection<String>) {
     fun decide(norm: PlateNormalizer.Result, ocrConfidence: Float, minConfidence: Float): MatchDecision {
         val penalised = (ocrConfidence - 0.08f * norm.corrections).coerceIn(0f, 1f)
         val n = norm.normalized
+        val hit = lookup(n)
 
         if (n.length < 4) {
             return MatchDecision(PlateStatus.REVIEW, n, penalised, null, "Plate text unreadable")
         }
         if (!norm.valid) {
             // Non-standard text: it can still be in the user's list (old / special plates).
-            if (n in exact && penalised >= minConfidence) {
-                return MatchDecision(PlateStatus.MATCH, n, penalised, n, null)
+            if (hit != null && penalised >= minConfidence) {
+                return MatchDecision(PlateStatus.MATCH, n, penalised, hit, null)
             }
-            val near = nearest(n)
+            val near = hit ?: nearest(n)
             return MatchDecision(
                 PlateStatus.REVIEW, n, penalised, near,
-                if (near != null) "Not a standard format; similar to $near" else "Not a standard Indian format"
+                if (near != null) "Not a standard format; possible match $near" else "Not a standard Indian format"
             )
         }
         if (norm.uncertain) {
-            val near = if (n in exact) n else nearest(n)
+            val near = hit ?: nearest(n)
             return MatchDecision(
                 PlateStatus.REVIEW, n, penalised, near,
                 "State code unclear (part of the plate may be cut off) – please verify" + (near?.let { "; possible match $it" } ?: "")
             )
         }
         if (penalised < minConfidence) {
-            val near = if (n in exact) n else nearest(n)
+            val near = hit ?: nearest(n)
             return MatchDecision(
                 PlateStatus.REVIEW, n, penalised, near,
                 "Low confidence (${(penalised * 100).toInt()}%)" + (near?.let { "; possible match $it" } ?: "")
             )
         }
-        if (n in exact) return MatchDecision(PlateStatus.MATCH, n, penalised, n, null)
+        if (hit != null) return MatchDecision(PlateStatus.MATCH, n, penalised, hit, null)
 
         val near = nearest(n)
         if (near != null) {
-            return MatchDecision(PlateStatus.REVIEW, n, penalised, near, "One character differs from $near")
+            return MatchDecision(PlateStatus.REVIEW, n, penalised, near, "Possible OCR misread – similar to $near")
         }
         return MatchDecision(PlateStatus.NOT_FOUND, n, penalised, null, null)
     }
 
-    /** A database number at distance ≤ 1 (substitution/insertion/deletion), or null. */
+    /**
+     * Closest saved number within an OCR-aware edit budget, or null.
+     * Costs: typical OCR confusion = 1, missing/extra character = 2, any other substitution = 3.
+     * Budget 3 → one wrong character, up to three typical confusions, or one confusion plus one
+     * dropped character ("KL0SBU836" ≈ "KL08BU6836") – but never two unrelated wrong characters.
+     */
     fun nearest(n: String): String? {
+        if (n.length < 6) return null
         var best: String? = null
-        var bestScore = Int.MAX_VALUE
+        var bestCost = MAX_COST + 1
         for (len in (n.length - 1)..(n.length + 1)) {
             val list = byLength[len] ?: continue
             for (cand in list) {
-                val d = editDistanceAtMostOne(n, cand)
-                if (d < 0) continue
-                // Prefer substitutions that are typical OCR confusions.
-                val score = d * 2 - if (d == 1 && len == n.length && isConfusionPair(n, cand)) 1 else 0
-                if (score < bestScore) { bestScore = score; best = cand }
+                val c = ocrDistance(n, cand, MAX_COST)
+                if (c < bestCost) { bestCost = c; best = cand }
             }
         }
-        return best
+        return if (bestCost <= MAX_COST) best else null
     }
 
     companion object {
+        private const val MAX_COST = 3
+
         private val CONFUSABLE = listOf(
-            "0O", "0D", "0Q", "1I", "1L", "2Z", "5S", "8B", "6G", "4A", "7T", "MN", "MH", "HN", "UV", "KX", "EF", "PR"
+            "0O", "0D", "0Q", "1I", "1L", "2Z", "5S", "8B", "6G", "4A", "7T", "MN", "MH", "HN", "UV", "KX", "EF", "PR",
+            "8S", "3B", "6B", "9G", "OD", "OQ", "UO"
         ).flatMap { listOf(it, it.reversed()) }.toHashSet()
 
-        private fun isConfusionPair(a: String, b: String): Boolean {
-            for (i in a.indices) if (a[i] != b[i]) return "${a[i]}${b[i]}" in CONFUSABLE
-            return false
+        private fun subCost(a: Char, b: Char) = when {
+            a == b -> 0
+            "$a$b" in CONFUSABLE -> 1
+            else -> 3
+        }
+
+        /** Weighted Levenshtein with early exit once every path exceeds [limit]. */
+        fun ocrDistance(a: String, b: String, limit: Int): Int {
+            if (kotlin.math.abs(a.length - b.length) * 2 > limit) return limit + 1
+            var prev = IntArray(b.length + 1) { it * 2 }
+            var cur = IntArray(b.length + 1)
+            for (i in 1..a.length) {
+                cur[0] = i * 2
+                var rowMin = cur[0]
+                for (j in 1..b.length) {
+                    val v = minOf(prev[j - 1] + subCost(a[i - 1], b[j - 1]), prev[j] + 2, cur[j - 1] + 2)
+                    cur[j] = v
+                    if (v < rowMin) rowMin = v
+                }
+                if (rowMin > limit) return limit + 1
+                val t = prev; prev = cur; cur = t
+            }
+            return prev[b.length]
+        }
+
+        private val STD = Regex("^([A-Z]{2})([0-9]{1,2})([A-Z]{0,3})([0-9]{1,4})$")
+
+        /** Matching key: district padded to 2 digits and serial to 4 (KL7A123 ≡ KL07A0123). */
+        fun canonical(n: String): String {
+            val m = STD.matchEntire(n) ?: return n
+            val (s, d, series, num) = m.destructured
+            return s + d.padStart(2, '0') + series + num.padStart(4, '0')
         }
 
         /** Returns 0 or 1 if distance ≤ 1, else -1. */

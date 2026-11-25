@@ -38,6 +38,23 @@ class MatcherAndGeometryTest {
         assertEquals("KL08AB1234", d.matchedNumber)
     }
 
+    @Test fun ocrMisreadOfSavedNumberIsReviewNotNotFound() {
+        // Real case: dotted font read "KL08BU6836" as "KL0SBU836" (8→S and a dropped 6).
+        val m = VehicleMatcher(listOf("KL08BU6836", "KL08BX1055", "KL12K9033", "KL57L0981"))
+        val d = m.decide(PlateNormalizer.normalize("KL0SBU836"), 0.95f, 0.75f)
+        assertEquals(PlateStatus.REVIEW, d.status)
+        assertEquals("KL08BU6836", d.matchedNumber)
+        // Two unrelated wrong characters are a different vehicle.
+        assertEquals(PlateStatus.NOT_FOUND, m.decide(PlateNormalizer.normalize("KL08BU6911"), 0.95f, 0.75f).status)
+    }
+
+    @Test fun districtAndSerialPaddingStillMatch() {
+        val m = VehicleMatcher(listOf("KL7A1234", "KL07B0123"))
+        assertEquals(PlateStatus.MATCH, m.decide(PlateNormalizer.normalize("KL 07 A 1234"), 0.95f, 0.75f).status)
+        assertEquals("KL7A1234", m.lookup("KL07A1234"))
+        assertEquals("KL07B0123", m.lookup("KL7B123"))
+    }
+
     @Test fun editDistance() {
         assertEquals(0, VehicleMatcher.editDistanceAtMostOne("AB", "AB"))
         assertEquals(1, VehicleMatcher.editDistanceAtMostOne("ABC", "ABD"))

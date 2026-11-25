@@ -13,9 +13,9 @@ android {
         applicationId = "com.vighnesh.vehiclescanner"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        versionCode = 3
+        versionName = "1.2.0"
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }   // real phones only (x86_64 = emulators)
     }
 
     // Play Store upload key: supplied by CI from GitHub secrets (never stored in the repo).

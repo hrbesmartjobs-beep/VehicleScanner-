@@ -37,6 +37,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +79,7 @@ fun HomeScreen(c: AppContainer, onScanStarted: () -> Unit, onOpen: (String) -> U
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) start(uri) }
 
     var pendingCamera by rememberSaveable { mutableStateOf<String?>(null) }
+    var checking by rememberSaveable { mutableStateOf(false) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val u = pendingCamera
         if (ok && u != null) start(Uri.parse(u))
@@ -138,6 +146,8 @@ fun HomeScreen(c: AppContainer, onScanStarted: () -> Unit, onOpen: (String) -> U
         }
         Spacer(Modifier.height(10.dp))
         ActionButton("TAKE PHOTO", "Capture a parking area with the camera", Icons.Default.CameraAlt, enabled = running == null) { openCamera() }
+        Spacer(Modifier.height(10.dp))
+        ActionButton("CHECK NUMBER", "Type a number to check it without a photo", Icons.Default.Search) { checking = true }
 
         SectionTitle("Manage")
         ActionButton("IMPORT EXCEL", "Bulk add numbers from .xlsx or .csv", Icons.Default.TableView) { onOpen(Routes.IMPORT) }
@@ -167,4 +177,50 @@ fun HomeScreen(c: AppContainer, onScanStarted: () -> Unit, onOpen: (String) -> U
         }
         Spacer(Modifier.height(28.dp))
     }
+    if (checking) CheckNumberDialog(c) { checking = false }
+}
+
+/** Instant manual lookup: exact match, likely match (OCR-style typo) or not found. */
+@Composable
+private fun CheckNumberDialog(c: AppContainer, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<Pair<com.vehiclescanner.core.PlateStatus, String?>?>(null) }
+    val sc = LocalStatusColors.current
+    val cleaned = com.vehiclescanner.core.PlateNormalizer.clean(text)
+    LaunchedEffect(cleaned) {
+        result = if (cleaned.length < 4) null else {
+            val m = c.vehicles.matcher()
+            val hit = m.lookup(cleaned)
+            when {
+                hit != null -> com.vehiclescanner.core.PlateStatus.MATCH to hit
+                else -> m.nearest(cleaned)?.let { com.vehiclescanner.core.PlateStatus.REVIEW to it }
+                    ?: (com.vehiclescanner.core.PlateStatus.NOT_FOUND to null)
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Check a number") },
+        text = {
+            Column {
+                OutlinedTextField(text, { text = it.uppercase() }, label = { Text("Registration number") }, singleLine = true,
+                    placeholder = { Text("KL 08 AB 1234") }, textStyle = com.vehiclescanner.ui.theme.PlateTextStyle,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters))
+                Spacer(Modifier.height(14.dp))
+                result?.let { (st, num) ->
+                    StatusBadge(st)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        when (st) {
+                            com.vehiclescanner.core.PlateStatus.MATCH -> "In your database: ${com.vehiclescanner.core.PlateNormalizer.format(num!!)}"
+                            com.vehiclescanner.core.PlateStatus.REVIEW -> "Not exact. Similar saved number: ${com.vehiclescanner.core.PlateNormalizer.format(num!!)}"
+                            com.vehiclescanner.core.PlateStatus.NOT_FOUND -> "This number is not in your database."
+                        },
+                        color = sc.fg(st), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }

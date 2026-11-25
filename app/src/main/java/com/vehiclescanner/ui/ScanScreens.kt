@@ -146,6 +146,7 @@ fun ResultsScreen(c: AppContainer, sessionId: Long, onBack: () -> Unit, onPhoto:
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ScanResultEntity?>(null) }
+    var confirming by remember { mutableStateOf<ScanResultEntity?>(null) }
     val sc = LocalStatusColors.current
 
     fun exportLauncherResult(format: FileFormat) = { uri: android.net.Uri? ->
@@ -214,7 +215,7 @@ fun ResultsScreen(c: AppContainer, sessionId: Long, onBack: () -> Unit, onPhoto:
                 PlateCard(r,
                     onEdit = { editing = r },
                     onUseSuggestion = { s -> scope.launch { c.scanner.correct(r.id, s) } },
-                    onConfirm = { scope.launch { c.scanner.correct(r.id, r.number) } },
+                    onConfirm = { confirming = r },
                     onAddToDb = {
                         scope.launch {
                             when (val res = c.vehicles.add(r.number, "Added from scan", settings.allowNonStandard)) {
@@ -236,6 +237,33 @@ fun ResultsScreen(c: AppContainer, sessionId: Long, onBack: () -> Unit, onPhoto:
             }
             editing = null
         })
+    }
+    confirming?.let { r ->
+        AlertDialog(
+            onDismissRequest = { confirming = null },
+            title = { Text("Is the reading exactly right?") },
+            text = {
+                Column {
+                    AsyncImage(File(r.cropPath), "Plate crop", Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Fit)
+                    Spacer(Modifier.height(12.dp))
+                    Text(PlateNormalizer.format(r.number), style = PlateTextStyle.copy(fontSize = PlateTextStyle.fontSize * 1.25f))
+                    Spacer(Modifier.height(8.dp))
+                    Text("Compare every letter and digit with the photo (8/B, 0/O, 5/S, 1/I). Confirm only if they are identical – otherwise choose Edit.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = r; confirming = null
+                    scope.launch {
+                        val st = c.scanner.correct(target.id, target.number)
+                        if (st != null) Toast.makeText(context, "Saved: ${statusLabel(st)}", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("Yes, identical") }
+            },
+            dismissButton = { TextButton(onClick = { editing = r; confirming = null }) { Text("Edit instead") } }
+        )
     }
     if (confirmDelete) ConfirmDialog("Delete this scan?", "The photo, plate crops and results of this scan will be removed from the phone.",
         "Delete", destructive = true, onConfirm = { scope.launch { c.scanner.deleteSession(sessionId); onBack() } }, onDismiss = { confirmDelete = false })

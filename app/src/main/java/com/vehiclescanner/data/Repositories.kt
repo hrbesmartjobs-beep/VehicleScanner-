@@ -93,7 +93,9 @@ data class AppSettings(
     /** When a YOLO model is installed, also run the classical OpenCV detector and merge. */
     val combineDetectors: Boolean = false,
     /** Accept numbers that do not follow the standard formats into the database. */
-    val allowNonStandard: Boolean = false
+    val allowNonStandard: Boolean = false,
+    /** Automatically delete scans older than this many days (0 = keep forever). */
+    val keepScansDays: Int = 0
 )
 
 class SettingsRepository(context: Context) {
@@ -107,7 +109,8 @@ class SettingsRepository(context: Context) {
         detectorThreshold = prefs.getFloat("detectorThreshold", 0.30f),
         tiledDetection = prefs.getBoolean("tiled", true),
         combineDetectors = prefs.getBoolean("combine", false),
-        allowNonStandard = prefs.getBoolean("allowNonStandard", false)
+        allowNonStandard = prefs.getBoolean("allowNonStandard", false),
+        keepScansDays = prefs.getInt("keepScansDays", 0)
     )
 
     fun update(f: (AppSettings) -> AppSettings) {
@@ -119,6 +122,7 @@ class SettingsRepository(context: Context) {
             .putBoolean("tiled", s.tiledDetection)
             .putBoolean("combine", s.combineDetectors)
             .putBoolean("allowNonStandard", s.allowNonStandard)
+            .putInt("keepScansDays", s.keepScansDays)
             .apply()
         _state.value = s
     }
