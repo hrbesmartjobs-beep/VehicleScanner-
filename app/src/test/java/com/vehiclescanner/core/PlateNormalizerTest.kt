@@ -46,10 +46,22 @@ class PlateNormalizerTest {
         assertFalse(norm("HELLO").valid)
         assertFalse(norm("").valid)
         assertFalse(PlateNormalizer.isValid("ZZ08AB1234"))   // not a state code
+        // Only the top line of a two-line bike plate is NOT a complete number.
+        assertFalse(norm("KL 57").valid)
+        assertFalse(norm("KL 5 7").valid)
+        assertTrue(norm("KL 57 0884").valid)
     }
 
     @Test fun prettyFormat() {
         assertEquals("KL 08 AB 1234", PlateNormalizer.format("KL08AB1234"))
         assertEquals("22 BH 1234 AA", PlateNormalizer.format("22BH1234AA"))
+    }
+
+    @org.junit.Test fun guessedStateCodeIsUncertain() {
+        // First letter "K" cut off: "L08BU6836" must not silently become a confident reading.
+        val r = norm("L08BU6836")
+        if (r.valid) assertTrue(r.uncertain || r.corrections > 0)
+        assertFalse(norm("KL08BU6836").uncertain)
+        assertTrue(norm("KL08BU6836").valid)
     }
 }

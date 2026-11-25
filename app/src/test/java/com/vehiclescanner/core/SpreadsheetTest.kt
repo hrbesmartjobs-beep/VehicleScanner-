@@ -70,7 +70,7 @@ class SpreadsheetTest {
         val rows = ArrayList<List<String>>()
         rows += listOf("Vehicle")
         val states = listOf("KL", "TN", "KA", "MH")
-        for (i in 0 until 20000) rows += listOf("${states[i % 4]}-${(i % 99 + 1).toString().padStart(2, '0')}-AB-${i % 10000}")
+        for (i in 0 until 20000) rows += listOf("${states[i % 4]}-${(i % 99 + 1).toString().padStart(2, '0')}-AB-${(i % 10000).toString().padStart(4, '0')}")
         val start = System.nanoTime()
         val p = ImportAnalyzer.analyze(Table("big", rows), 0, true, emptySet(), false)
         val ms = (System.nanoTime() - start) / 1_000_000

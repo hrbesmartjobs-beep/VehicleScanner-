@@ -82,13 +82,30 @@ class PlateOcr : Closeable {
             val input = if (s < 1f) Bitmap.createScaledBitmap(region, (region.width * s).toInt(), (region.height * s).toInt(), true) else region
             try {
                 val text = recognizer.process(InputImage.fromBitmap(input, 0)).await()
-                fun add(rect: android.graphics.Rect?, t: String) {
+                fun add(rect: android.graphics.Rect?, t: String, score: Float) {
                     if (rect == null || !looksLikePlate(t)) return
-                    out += Box(rect.left / s + r.left, rect.top / s + r.top, rect.right / s + r.left, rect.bottom / s + r.top, 0.5f)
+                    out += Box(rect.left / s + r.left, rect.top / s + r.top, rect.right / s + r.left, rect.bottom / s + r.top, score)
                 }
                 for (block in text.textBlocks) {
-                    for (line in block.lines) add(line.boundingBox, line.text)
-                    if (block.lines.size in 2..3) add(block.boundingBox, block.lines.joinToString("") { it.text })
+                    for (line in block.lines) add(line.boundingBox, line.text, 0.5f)
+                    if (block.lines.size in 2..3) add(block.boundingBox, block.lines.joinToString("") { it.text }, 0.7f)
+                }
+                // Two-line plates (bikes, autos, trucks): ML Kit often returns the two rows as separate
+                // blocks. Pair every line with the line directly below it when they line up.
+                val lines = text.textBlocks.flatMap { it.lines }.filter { it.boundingBox != null }
+                for (top in lines) {
+                    val a = top.boundingBox!!
+                    val h = a.height().toFloat()
+                    for (bottom in lines) {
+                        if (bottom === top) continue
+                        val b = bottom.boundingBox!!
+                        val gap = b.top - a.bottom
+                        if (b.centerY() <= a.centerY() || gap > h * 1.2f || gap < -h * 0.5f) continue
+                        val overlap = minOf(a.right, b.right) - maxOf(a.left, b.left)
+                        if (overlap < 0.4f * minOf(a.width(), b.width())) continue
+                        val union = android.graphics.Rect(a).apply { union(b) }
+                        add(union, top.text + bottom.text, 0.8f)
+                    }
                 }
             } finally {
                 if (input !== region) input.recycle()

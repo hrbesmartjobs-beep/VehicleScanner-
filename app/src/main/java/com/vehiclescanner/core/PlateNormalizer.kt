@@ -43,7 +43,7 @@ object PlateNormalizer {
         'V' to listOf('U'), 'U' to listOf('V')
     )
 
-    private val STANDARD = Regex("^([A-Z]{2})([0-9]{1,2})([A-Z]{0,3})([0-9]{1,4})$")
+    private val STANDARD = Regex("^([A-Z]{2})([0-9]{1,2})([A-Z]{0,3})([0-9]{3,4})$")
     private val BH = Regex("^([0-9]{2})(BH)([0-9]{4})([A-Z]{1,2})$")
 
     /** Uppercase and strip everything that is not A–Z / 0–9. Also maps common unicode lookalikes. */
@@ -86,7 +86,9 @@ object PlateNormalizer {
         /** Number of characters changed by position-aware OCR correction. */
         val corrections: Int,
         /** Text exactly as cleaned from OCR (no correction). */
-        val cleanedRaw: String
+        val cleanedRaw: String,
+        /** True when the state code itself had to be guessed (e.g. first letter cut off) – always needs a human check. */
+        val uncertain: Boolean = false
     )
 
     /**
@@ -115,7 +117,7 @@ object PlateNormalizer {
         }
         val b = best
         return if (b != null && b.cost <= MAX_COST) {
-            Result(b.text, true, b.corrections + b.trimmedPenaltyCount(cleaned), cleaned)
+            Result(b.text, true, b.corrections + b.trimmedPenaltyCount(cleaned), cleaned, uncertain = b.stateRepaired)
         } else {
             Result(cleaned, false, 0, cleaned)
         }
@@ -123,7 +125,7 @@ object PlateNormalizer {
 
     private const val MAX_COST = 8
 
-    private data class Candidate(val text: String, val corrections: Int, val cost: Int, val shapeScore: Int) {
+    private data class Candidate(val text: String, val corrections: Int, val cost: Int, val shapeScore: Int, val stateRepaired: Boolean = false) {
         fun better(o: Candidate): Boolean =
             if (cost != o.cost) cost < o.cost else shapeScore > o.shapeScore
 
@@ -134,7 +136,7 @@ object PlateNormalizer {
     private fun templates(len: Int): List<String> {
         val out = ArrayList<String>()
         // Standard: LL D{1,2} L{0,3} D{1,4}
-        for (d1 in 1..2) for (s in 0..3) for (d2 in 1..4) {
+        for (d1 in 1..2) for (s in 0..3) for (d2 in 3..4) {
             if (2 + d1 + s + d2 == len) out += "LL" + "D".repeat(d1) + "L".repeat(s) + "D".repeat(d2)
         }
         // BH: DD BH DDDD L{1,2}
@@ -170,6 +172,7 @@ object PlateNormalizer {
             if (!ok) continue
             var text = String(chars)
             var cost = corrections * 2
+            var stateRepaired = false
             val isBh = t.startsWith("DDBB")
             if (!isBh) {
                 val state = text.substring(0, 2)
@@ -178,6 +181,7 @@ object PlateNormalizer {
                     text = repaired + text.substring(2)
                     corrections += 1
                     cost += 3
+                    stateRepaired = true
                 }
             }
             // Shape preference: 2-digit district, 4-digit number, 1-2 letter series is the common case.
@@ -190,9 +194,9 @@ object PlateNormalizer {
                 if (d1Len == 2) shape += 2
                 if (numLen == 4) shape += 3
                 if (seriesLen in 1..2) shape += 1
-                if (numLen < 4) cost += if (numLen < 3) 5 else 3   // registration numbers are 4 digits
+                if (numLen < 4) cost += 3   // registration numbers are normally 4 digits
             } else shape += 3
-            result += Candidate(text, corrections, cost, shape)
+            result += Candidate(text, corrections, cost, shape, stateRepaired)
         }
         return result
     }

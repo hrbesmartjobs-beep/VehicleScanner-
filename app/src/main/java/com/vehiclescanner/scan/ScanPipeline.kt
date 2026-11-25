@@ -94,7 +94,7 @@ class ScanPipeline(
                 candidates.forEachIndexed { i, c ->
                     ensureActive()
                     progress(0.35f + 0.6f * i / candidates.size.coerceAtLeast(1), "Reading plate ${i + 1} of ${candidates.size}")
-                    val padded = c.box.expand(0.06f, 0.15f, image.width, image.height)
+                    val padded = c.box.expand(0.12f, 0.25f, image.width, image.height)
                     val crop = ImageUtils.crop(image, padded)
                     try {
                         if (c.needsVerification) {

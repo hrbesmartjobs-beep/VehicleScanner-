@@ -57,6 +57,13 @@ class VehicleMatcher(numbers: Collection<String>) {
                 if (near != null) "Not a standard format; similar to $near" else "Not a standard Indian format"
             )
         }
+        if (norm.uncertain) {
+            val near = if (n in exact) n else nearest(n)
+            return MatchDecision(
+                PlateStatus.REVIEW, n, penalised, near,
+                "State code unclear (part of the plate may be cut off) – please verify" + (near?.let { "; possible match $it" } ?: "")
+            )
+        }
         if (penalised < minConfidence) {
             val near = if (n in exact) n else nearest(n)
             return MatchDecision(
