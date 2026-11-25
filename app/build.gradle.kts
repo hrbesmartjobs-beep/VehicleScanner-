@@ -7,14 +7,14 @@ plugins {
 
 android {
     namespace = "com.vehiclescanner"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.vighnesh.vehiclescanner"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        targetSdk = 36
+        versionCode = 4
+        versionName = "1.2.1"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }   // real phones only (x86_64 = emulators)
     }
 
