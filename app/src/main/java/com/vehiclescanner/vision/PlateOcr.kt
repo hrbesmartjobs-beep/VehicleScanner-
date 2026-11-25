@@ -58,5 +58,52 @@ class PlateOcr : Closeable {
         return PlateTextAssembler.pickBest(readings)
     }
 
+    /**
+     * Plate localisation by text detection: finds regions whose text looks like a
+     * registration number (one line, or two stacked lines of one block). Runs on a
+     * downscaled full view plus overlapping tiles so small, distant plates are found.
+     * Returned boxes are only *locations* — every plate is then cropped, enhanced and
+     * read again individually by [read].
+     */
+    suspend fun findPlateRegions(image: Bitmap, onTile: (Int, Int) -> Unit = { _, _ -> }): List<Box> {
+        val views = ArrayList<Pair<android.graphics.Rect, Int>>()   // region of the image, max side for OCR
+        views += android.graphics.Rect(0, 0, image.width, image.height) to 2048
+        if (maxOf(image.width, image.height) > 1800) {
+            val tw = (image.width * 0.6f).toInt(); val th = (image.height * 0.6f).toInt()
+            for (y in listOf(0, image.height - th)) for (x in listOf(0, image.width - tw))
+                views += android.graphics.Rect(x, y, x + tw, y + th) to 2048
+        }
+        val out = ArrayList<Box>()
+        views.forEachIndexed { i, (r, maxSide) ->
+            onTile(i + 1, views.size)
+            val region = if (r.width() == image.width && r.height() == image.height) image
+                else Bitmap.createBitmap(image, r.left, r.top, r.width(), r.height())
+            val s = minOf(1f, maxSide.toFloat() / maxOf(region.width, region.height))
+            val input = if (s < 1f) Bitmap.createScaledBitmap(region, (region.width * s).toInt(), (region.height * s).toInt(), true) else region
+            try {
+                val text = recognizer.process(InputImage.fromBitmap(input, 0)).await()
+                fun add(rect: android.graphics.Rect?, t: String) {
+                    if (rect == null || !looksLikePlate(t)) return
+                    out += Box(rect.left / s + r.left, rect.top / s + r.top, rect.right / s + r.left, rect.bottom / s + r.top, 0.5f)
+                }
+                for (block in text.textBlocks) {
+                    for (line in block.lines) add(line.boundingBox, line.text)
+                    if (block.lines.size in 2..3) add(block.boundingBox, block.lines.joinToString("") { it.text })
+                }
+            } finally {
+                if (input !== region) input.recycle()
+                if (region !== image) region.recycle()
+            }
+        }
+        return com.vehiclescanner.core.Nms.apply(out, 0.3f, 0.6f)
+    }
+
+    private fun looksLikePlate(raw: String): Boolean {
+        val n = com.vehiclescanner.core.PlateNormalizer.normalize(raw)
+        if (n.valid) return true
+        val t = n.cleanedRaw
+        return t.length in 6..12 && t.count { it.isDigit() } >= 3 && t.count { it.isLetter() } >= 2
+    }
+
     override fun close() = recognizer.close()
 }

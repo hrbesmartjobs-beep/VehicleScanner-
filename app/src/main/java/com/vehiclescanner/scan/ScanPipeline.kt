@@ -70,20 +70,27 @@ class ScanPipeline(
                 }
                 Nms.apply(boxes, 0.45f, 0.75f).forEach { candidates += Candidate(it, false) }
             }
-            if (yolo == null || cfg.combineDetectors) {
-                detectorNames += "OpenCV"
-                ensureActive()
-                progress(0.2f, "Locating plates (OpenCV)")
-                val cv = OpenCvPlateDetector().detect(image, cfg.detectorThreshold)
-                for (b in cv) {
-                    if (candidates.none { it.box.iou(b) > 0.3f || it.box.overlapOfSmaller(b) > 0.6f }) candidates += Candidate(b, true)
-                }
-            }
-
-            // ---------------- OCR every plate crop individually
             val matcher = vehicles.matcher()
             val results = ArrayList<ScanResultEntity>()
             PlateOcr().use { ocr ->
+                if (yolo == null || cfg.combineDetectors) {
+                    // Plate-text localisation (reliable on clear photos) …
+                    detectorNames += "Text locator"
+                    ensureActive()
+                    val textBoxes = ocr.findPlateRegions(image) { i, n -> progress(0.06f + 0.18f * i / n, "Finding number plates ($i/$n)") }
+                    for (b in textBoxes) {
+                        if (candidates.none { it.box.iou(b) > 0.3f || it.box.overlapOfSmaller(b) > 0.6f }) candidates += Candidate(b, true)
+                    }
+                    // … plus the classical OpenCV localiser for plates whose text was missed.
+                    detectorNames += "OpenCV"
+                    ensureActive()
+                    progress(0.26f, "Locating plates (OpenCV)")
+                    val cv = OpenCvPlateDetector().detect(image, cfg.detectorThreshold)
+                    for (b in cv) {
+                        if (candidates.none { it.box.iou(b) > 0.3f || it.box.overlapOfSmaller(b) > 0.6f }) candidates += Candidate(b, true)
+                    }
+                }
+
                 candidates.forEachIndexed { i, c ->
                     ensureActive()
                     progress(0.35f + 0.6f * i / candidates.size.coerceAtLeast(1), "Reading plate ${i + 1} of ${candidates.size}")
