@@ -26,8 +26,9 @@ object ImageUtils {
     fun load(context: Context, uri: Uri, maxSide: Int = MAX_SIDE): Bitmap {
         val cr = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: throw ImageLoadException("Cannot open the selected image")
+        // Note: with inJustDecodeBounds decodeStream() always returns null, so the stream itself is null-checked.
+        val boundsStream = cr.openInputStream(uri) ?: throw ImageLoadException("Cannot open the selected image")
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw ImageLoadException("Unsupported or corrupt image")
 
         var sample = 1
