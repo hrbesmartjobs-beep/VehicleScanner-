@@ -21,6 +21,14 @@ android {
     // Play Store upload key: supplied by CI from GitHub secrets (never stored in the repo).
     val uploadKeystore = System.getenv("UPLOAD_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
     signingConfigs {
+        // Fixed test key (standard public debug credentials, not a secret) so every CI build
+        // can install as an update over the previous one.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (uploadKeystore != null) create("upload") {
             storeFile = uploadKeystore
             storePassword = System.getenv("UPLOAD_KEYSTORE_PASSWORD")
