@@ -2,8 +2,8 @@
 
 | Component | Use | Licence |
 |---|---|---|
-| OpenCV 4.10 (`org.opencv:opencv`) | Image enhancement, classical plate detector | Apache License 2.0 |
-| TensorFlow Lite 2.16 (`org.tensorflow:tensorflow-lite`) | On-device YOLO inference | Apache License 2.0 |
+| OpenCV 4.12 (`org.opencv:opencv`) | Image enhancement, classical plate detector | Apache License 2.0 |
+| LiteRT 1.4 (`com.google.ai.edge.litert:litert`, successor of TensorFlow Lite) | On-device YOLO inference | Apache License 2.0 |
 | Google ML Kit Text Recognition v2, bundled (`com.google.mlkit:text-recognition`) | Offline OCR | ML Kit Terms of Service (free, on-device) |
 | AndroidX, Jetpack Compose, Material 3, Room, Navigation, Lifecycle | App framework | Apache License 2.0 |
 | Kotlin, kotlinx.coroutines | Language and runtime | Apache License 2.0 |

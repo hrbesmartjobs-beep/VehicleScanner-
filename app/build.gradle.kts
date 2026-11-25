@@ -18,12 +18,23 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
+    // Play Store upload key: supplied by CI from GitHub secrets (never stored in the repo).
+    val uploadKeystore = System.getenv("UPLOAD_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (uploadKeystore != null) create("upload") {
+            storeFile = uploadKeystore
+            storePassword = System.getenv("UPLOAD_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("UPLOAD_KEY_ALIAS") ?: "upload"
+            keyPassword = System.getenv("UPLOAD_KEYSTORE_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            // Kept unminified so OpenCV / TFLite / ML Kit JNI classes are never stripped.
+            // Kept unminified so OpenCV / LiteRT / ML Kit JNI classes are never stripped.
             isMinifyEnabled = false
-            // Debug-signed so the release APK installs straight away; replace with your own keystore for distribution.
-            signingConfig = signingConfigs.getByName("debug")
+            // Upload key when available (Play Store), otherwise debug key so test APKs still install.
+            signingConfig = if (uploadKeystore != null) signingConfigs.getByName("upload") else signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -66,7 +77,7 @@ dependencies {
     implementation(libs.coroutines.play.services)
 
     implementation(libs.mlkit.text)          // bundled Latin model – works offline
-    implementation(libs.tflite)              // YOLO plate detector inference
+    implementation(libs.litert)             // YOLO plate detector inference (LiteRT = TensorFlow Lite successor, 16 KB pages)
     implementation(libs.opencv)              // image enhancement + classical plate detector
     implementation(libs.exifinterface)
     implementation(libs.coil.compose)

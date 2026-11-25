@@ -10,8 +10,8 @@ navigation = "2.8.5"
 room = "2.6.1"
 coroutines = "1.9.0"
 mlkitText = "16.0.1"
-tflite = "2.16.1"
-opencv = "4.10.0"
+litert = "1.4.0"
+opencv = "4.12.0"
 exif = "1.3.7"
 coil = "2.7.0"
 junit = "4.13.2"
@@ -36,7 +36,7 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
 mlkit-text = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitText" }
-tflite = { module = "org.tensorflow:tensorflow-lite", version.ref = "tflite" }
+litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
 opencv = { module = "org.opencv:opencv", version.ref = "opencv" }
 exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exif" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }

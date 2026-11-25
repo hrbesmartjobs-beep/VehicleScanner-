@@ -8,6 +8,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+      UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,16 +24,46 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Prepare Play Store upload key (if configured)
+        run: |
+          if [ -n "$UPLOAD_KEYSTORE_BASE64" ] && [ -n "$UPLOAD_KEYSTORE_PASSWORD" ]; then
+            echo "$UPLOAD_KEYSTORE_BASE64" | tr -d ' \n\r' | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "UPLOAD_KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "Signing with the Play Store upload key." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No upload key secrets set: release is signed with the debug key (test install only, NOT for Play Store)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
-      - name: Build debug and release APKs
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+      - name: Build release APK and Play Store bundle (AAB)
+        run: ./gradlew --no-daemon assembleRelease bundleRelease
+
+      - name: Check 16 KB page-size alignment of native libraries
+        run: |
+          READELF=$(ls "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf)
+          rm -rf /tmp/apk && mkdir /tmp/apk
+          unzip -q -o app/build/outputs/apk/release/app-release.apk 'lib/arm64-v8a/*' 'lib/x86_64/*' -d /tmp/apk
+          echo "### 16 KB page-size check (64-bit libraries)" >> "$GITHUB_STEP_SUMMARY"
+          bad=0
+          for so in /tmp/apk/lib/*/*.so; do
+            min=999999999
+            for a in $("$READELF" -lW "$so" | awk '$1=="LOAD"{print $NF}'); do v=$((a)); [ "$v" -lt "$min" ] && min=$v; done
+            if [ "$min" -ge 16384 ]; then s="OK"; else s="NOT ALIGNED ($min)"; bad=1; fi
+            echo "- $(basename $(dirname $so))/$(basename $so): $s" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          if [ $bad -eq 0 ]; then echo "All 64-bit native libraries support 16 KB pages." | tee -a "$GITHUB_STEP_SUMMARY"; fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: VehicleScanner-apk
           path: app/build/outputs/apk/release/app-release.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VehicleScanner-playstore-aab
+          path: app/build/outputs/bundle/release/app-release.aab
 
       - uses: actions/upload-artifact@v4
         if: always()
