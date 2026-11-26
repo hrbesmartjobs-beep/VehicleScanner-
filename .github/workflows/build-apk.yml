@@ -58,14 +58,18 @@ jobs:
           done
           if [ $bad -eq 0 ]; then echo "All 64-bit native libraries support 16 KB pages." | tee -a "$GITHUB_STEP_SUMMARY"; fi
 
-      - name: Publish APK as a GitHub Release (version tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish APK as a GitHub Release (main branch)
+        if: github.ref == 'refs/heads/main'
         run: |
-          cp app/build/outputs/apk/release/app-release.apk "VehicleScanner-${GITHUB_REF_NAME}.apk"
+          VERSION=$(grep -m1 'versionName' app/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v$VERSION"
           cp app/build/outputs/apk/release/app-release.apk VehicleScanner.apk
-          gh release create "$GITHUB_REF_NAME" "VehicleScanner-${GITHUB_REF_NAME}.apk" VehicleScanner.apk \
-            --title "Vehicle Scanner ${GITHUB_REF_NAME}" \
-            --notes "Offline multi-plate number plate scanner for Android, developed by VIGHNESH. Download VehicleScanner.apk and install it on an Android 8.0+ phone (allow 'Install unknown apps')."
+          NOTES="Offline multi-plate number plate scanner for Android, developed by VIGHNESH. Download VehicleScanner.apk and install it on an Android 8.0+ phone (allow 'Install unknown apps')."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" VehicleScanner.apk --clobber
+          else
+            gh release create "$TAG" VehicleScanner.apk --target "$GITHUB_SHA" --title "Vehicle Scanner $TAG" --notes "$NOTES" --latest
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
