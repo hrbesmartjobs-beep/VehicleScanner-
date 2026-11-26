@@ -148,6 +148,13 @@ fun IntroScreen(full: Boolean, onFinished: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
+                        "CREATED & DEVELOPED BY",
+                        Modifier.alpha(fade(t, tl.devIn, fadeIn = 500f)),
+                        color = NeonCyan, fontSize = (w * 0.036f).coerceIn(11f, 16f).sp,
+                        letterSpacing = 4.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                    )
+                    Spacer(Modifier.height(18.dp))
+                    Text(
                         "VIGHNESH",
                         modifier = Modifier.drawWithContent {
                             clipRect(right = size.width * reveal) { this@drawWithContent.drawContent() }
@@ -221,7 +228,7 @@ fun IntroScreen(full: Boolean, onFinished: () -> Unit) {
             }
 
             Text(
-                "© 2026 VIGHNESH. All Rights Reserved.",
+                "Created & developed by VIGHNESH  ·  © 2026 All Rights Reserved",
                 Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp).alpha(0.75f * fade(t, tl.devIn + 300f, fadeIn = 900f)),
                 color = SilverText, fontSize = 11.sp, letterSpacing = 1.sp
             )
