@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.TableView
 import androidx.compose.material.icons.filled.Verified
@@ -37,6 +38,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +59,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
@@ -76,26 +80,15 @@ private val SilverStops = listOf(
     Color(0xFF7D838C), Color(0xFFE9EDF2), Color(0xFFFFFFFF), Color(0xFFA9B0BA), Color(0xFFF4F6F9), Color(0xFF7D838C)
 )
 
-/** Times in ms. `null` end = stays visible until the intro finishes. */
+/** Times in ms. The intro animates in, then waits on the ENTER button. */
 private class Timeline(
-    val total: Int,
-    val devIn: Float, val devOut: Float,
-    val subIn: Float,
-    val brandIn: Float,
-    val scanIn: Float,
-    val featuresIn: Float,
-    val loadIn: Float,
-    val skippableAfter: Float
-)
+    val devIn: Float, val devOut: Float, val subIn: Float,
+    val finalIn: Float, val featuresIn: Float, val enterIn: Float
+) { val end get() = enterIn + 900f }
 
-private val FullTimeline = Timeline(
-    total = 7600, devIn = 250f, devOut = 3100f, subIn = 1250f, brandIn = 3100f,
-    scanIn = 3500f, featuresIn = 4500f, loadIn = 5500f, skippableAfter = 2600f
-)
-private val ShortTimeline = Timeline(
-    total = 2300, devIn = 0f, devOut = 1050f, subIn = 250f, brandIn = 1050f,
-    scanIn = 1150f, featuresIn = Float.MAX_VALUE, loadIn = 1150f, skippableAfter = 600f
-)
+// First launch: long cinematic reveal. Later launches: shorter, but the name still gets its moment.
+private val FullTimeline = Timeline(devIn = 300f, devOut = 4200f, subIn = 1500f, finalIn = 4200f, featuresIn = 5600f, enterIn = 6800f)
+private val ShortTimeline = Timeline(devIn = 200f, devOut = 2600f, subIn = 900f, finalIn = 2600f, featuresIn = 3300f, enterIn = 3900f)
 
 /** 0→1 fade-in from [start], optional 1→0 fade-out ending at [end]. */
 private fun fade(t: Float, start: Float, end: Float? = null, fadeIn: Float = 550f, fadeOut: Float = 420f): Float {
@@ -109,130 +102,211 @@ private fun fade(t: Float, start: Float, end: Float? = null, fadeIn: Float = 550
 private fun easeOut(x: Float): Float { val c = x.coerceIn(0f, 1f); return 1f - (1f - c) * (1f - c) * (1f - c) }
 
 /**
- * Cinematic opening: developer identity (VIGHNESH) → VEHICLE SCANNER brand with a
- * holographic car scan → feature reveal → initialisation progress.
- * Full version on first launch, short version afterwards. Tap to skip once the name has shown.
- * Pure Compose drawing (no bitmaps / video), one animation clock, stops completely when done.
+ * Premium opening: developer identity (CREATED & DEVELOPED BY · VIGHNESH) → brand with a
+ * holographic car scan and feature reveal → a glowing ENTER button. The app opens only when
+ * ENTER is pressed. Pure Compose drawing (no bitmaps / video).
  */
 @Composable
 fun IntroScreen(full: Boolean, onFinished: () -> Unit) {
     val tl = if (full) FullTimeline else ShortTimeline
     val clock = remember { Animatable(0f) }
+    val exit = remember { Animatable(0f) }
+    var exiting by remember { mutableStateOf(false) }
     val finish by rememberUpdatedState(onFinished)
-    LaunchedEffect(Unit) {
-        clock.animateTo(tl.total.toFloat(), tween(tl.total, easing = LinearEasing))
-        finish()
+    LaunchedEffect(Unit) { clock.animateTo(tl.end, tween(tl.end.toInt(), easing = LinearEasing)) }
+    LaunchedEffect(exiting) {
+        if (exiting) { exit.animateTo(1f, tween(650, easing = LinearEasing)); finish() }
     }
     val loop = rememberInfiniteTransition(label = "intro")
-    val shimmer by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "shimmer")
+    val shimmer by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "shimmer")
     val drift by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "drift")
+    val scanLoop by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "scan")
+    val spin by loop.animateFloat(0f, 360f, infiniteRepeatable(tween(14000, easing = LinearEasing)), label = "spin")
+    val pulse by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "pulse")
     val t = clock.value
+    val ex = exit.value
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(IntroBlack)
-            .pointerInput(Unit) { detectTapGestures { if (clock.value >= tl.skippableAfter) finish() } }
-    ) {
-        Backdrop(drift = drift, time = t, alpha = fade(t, 0f, fadeIn = 900f))
+    Box(Modifier.fillMaxSize().background(IntroBlack)) {
+        Backdrop(drift = drift, time = t + ex * 3000f, alpha = fade(t, 0f, fadeIn = 900f))
+        HudFrame(alpha = fade(t, 600f, fadeIn = 900f), sweep = shimmer)
 
         BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 24.dp)) {
             val w = maxWidth.value
 
-            // ---------------- 1. Developer identity
-            val devA = fade(t, tl.devIn, tl.devOut)
+            // ---------------- 1. Developer identity, centre stage
+            val devA = fade(t, tl.devIn, tl.devOut, fadeOut = 600f)
             if (devA > 0f) {
-                val reveal = easeOut((t - tl.devIn) / 1100f)
-                Column(
-                    Modifier.align(Alignment.Center).alpha(devA),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        "CREATED & DEVELOPED BY",
-                        Modifier.alpha(fade(t, tl.devIn, fadeIn = 500f)),
-                        color = NeonCyan, fontSize = (w * 0.036f).coerceIn(11f, 16f).sp,
-                        letterSpacing = 4.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
-                    )
-                    Spacer(Modifier.height(18.dp))
-                    Text(
-                        "VIGHNESH",
-                        modifier = Modifier.drawWithContent {
-                            clipRect(right = size.width * reveal) { this@drawWithContent.drawContent() }
-                        },
-                        style = metallic(shimmer, (w * 0.135f).coerceIn(34f, 84f), letterSpacing = 4f + 14f * (1f - reveal)),
-                        maxLines = 1
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    NeonRule(progress = reveal, modifier = Modifier.width((w * 0.62f).dp).height(10.dp))
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        "ENGINEER • DEVELOPER • INNOVATOR",
-                        Modifier.alpha(fade(t, tl.subIn, fadeIn = 700f)),
-                        color = SilverText, fontSize = (w * 0.033f).coerceIn(10f, 15f).sp,
-                        letterSpacing = 3.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 1
-                    )
+                val reveal = easeOut((t - tl.devIn) / 1300f)
+                Box(Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) {
+                    HoloRings(spin = spin, alpha = devA * 0.9f, modifier = Modifier.size((w * 0.92f).dp))
+                    Column(Modifier.alpha(devA), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "CREATED & DEVELOPED BY",
+                            Modifier.alpha(fade(t, tl.devIn, fadeIn = 700f)),
+                            color = NeonCyan, fontSize = (w * 0.038f).coerceIn(11f, 17f).sp,
+                            letterSpacing = 4.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                        )
+                        Spacer(Modifier.height(18.dp))
+                        Text(
+                            "VIGHNESH",
+                            modifier = Modifier.drawWithContent {
+                                clipRect(right = size.width * reveal) { this@drawWithContent.drawContent() }
+                            },
+                            style = metallic(shimmer, (w * 0.14f).coerceIn(36f, 88f), letterSpacing = 4f + 14f * (1f - reveal)),
+                            maxLines = 1
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        NeonRule(progress = reveal, modifier = Modifier.width((w * 0.62f).dp).height(10.dp))
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            "ENGINEER • DEVELOPER • INNOVATOR",
+                            Modifier.alpha(fade(t, tl.subIn, fadeIn = 800f)),
+                            color = SilverText, fontSize = (w * 0.033f).coerceIn(10f, 15f).sp,
+                            letterSpacing = 3.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 1
+                        )
+                    }
                 }
             }
 
-            // ---------------- 2–5. Brand, hologram car, features, loading
-            val brandA = fade(t, tl.brandIn, fadeIn = 650f)
-            if (brandA > 0f) {
+            // ---------------- 2. Final screen: name stays, brand, hologram car, features, ENTER
+            val finA = fade(t, tl.finalIn, fadeIn = 800f)
+            if (finA > 0f) {
                 Column(
-                    Modifier.fillMaxSize().alpha(brandA),
+                    Modifier.fillMaxSize().alpha(finA),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Text(
-                        "VEHICLE SCANNER",
-                        style = metallic(shimmer, (w * 0.082f).coerceIn(24f, 44f), letterSpacing = 5f),
-                        maxLines = 1
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "SCAN • MATCH • VERIFY",
-                        color = NeonCyan, fontSize = 12.sp, letterSpacing = 4.sp, fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    CarHologram(
-                        scan = ((t - tl.scanIn) / 1700f).let { if (it < 0f) -1f else it % 1f },
-                        reveal = easeOut((t - tl.brandIn) / 900f),
-                        modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth().aspectRatio(2.35f)
-                    )
-                    if (full) {
-                        Spacer(Modifier.height(18.dp))
-                        val features = listOf(
-                            Icons.Default.DocumentScanner to "Multi-Plate Detection",
-                            Icons.Default.WifiOff to "Offline Plate Reading",
-                            Icons.Default.Verified to "Instant Database Match",
-                            Icons.Default.TableView to "Excel Import & Export"
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("CREATED & DEVELOPED BY", color = NeonCyan, fontSize = 11.sp, letterSpacing = 3.5.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(6.dp))
+                        Text("VIGHNESH", style = metallic(shimmer, (w * 0.095f).coerceIn(26f, 52f), letterSpacing = 6f), maxLines = 1)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CarHologram(
+                            scan = scanLoop,
+                            reveal = easeOut((t - tl.finalIn) / 1000f),
+                            modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth().aspectRatio(2.35f)
                         )
-                        Column(Modifier.widthIn(max = 520.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            for (row in 0..1) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                for (col in 0..1) {
-                                    val i = row * 2 + col
-                                    val a = fade(t, tl.featuresIn + i * 220f, fadeIn = 450f)
-                                    FeatureChip(features[i].first, features[i].second, a, Modifier.weight(1f))
-                                }
+                        Spacer(Modifier.height(16.dp))
+                        Text("VEHICLE SCANNER", style = metallic(shimmer, (w * 0.075f).coerceIn(22f, 40f), letterSpacing = 5f), maxLines = 1)
+                        Spacer(Modifier.height(6.dp))
+                        Text("SCAN • MATCH • VERIFY", color = NeonCyan, fontSize = 12.sp, letterSpacing = 4.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    val features = listOf(
+                        Icons.Default.DocumentScanner to "Multi-Plate Detection",
+                        Icons.Default.WifiOff to "Offline Plate Reading",
+                        Icons.Default.Verified to "Instant Database Match",
+                        Icons.Default.TableView to "Excel Import & Export"
+                    )
+                    Column(Modifier.widthIn(max = 520.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (row in 0..1) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            for (col in 0..1) {
+                                val i = row * 2 + col
+                                FeatureChip(features[i].first, features[i].second, fade(t, tl.featuresIn + i * 180f, fadeIn = 450f), Modifier.weight(1f))
                             }
                         }
                     }
-                    Spacer(Modifier.height(26.dp))
-                    val loadA = fade(t, tl.loadIn, fadeIn = 400f)
-                    val progress = ((t - tl.loadIn) / (tl.total - tl.loadIn - 150f)).coerceIn(0f, 1f)
-                    Column(Modifier.alpha(loadA), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("INITIALIZING VEHICLE SCANNER...", color = SilverText, fontSize = 11.sp, letterSpacing = 2.5.sp)
-                        Spacer(Modifier.height(10.dp))
-                        GlowProgress(easeOut(progress), Modifier.width((w * 0.62f).coerceAtMost(360f).dp).height(10.dp))
-                    }
+                    EnterButton(
+                        alpha = fade(t, tl.enterIn, fadeIn = 700f), pulse = pulse, sweep = shimmer,
+                        enabled = t >= tl.enterIn && !exiting,
+                        modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(0.78f).height(64.dp)
+                    ) { exiting = true }
                 }
             }
 
             Text(
-                "Created & developed by VIGHNESH  ·  © 2026 All Rights Reserved",
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp).alpha(0.75f * fade(t, tl.devIn + 300f, fadeIn = 900f)),
-                color = SilverText, fontSize = 11.sp, letterSpacing = 1.sp
+                "© 2026 VIGHNESH. All Rights Reserved.",
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).alpha(0.7f * fade(t, tl.devIn + 400f, fadeIn = 900f)),
+                color = SilverText, fontSize = 10.sp, letterSpacing = 1.sp
             )
         }
+
+        // Exit: blue light burst, then fade to black into the app.
+        if (ex > 0f) {
+            Canvas(Modifier.fillMaxSize()) {
+                val c = Offset(size.width / 2, size.height * 0.82f)
+                val r = size.maxDimension * easeOut(ex) * 1.2f
+                drawCircle(Brush.radialGradient(listOf(NeonCyan.copy(alpha = 0.55f * (1f - ex)), NeonBlue.copy(alpha = 0.25f * (1f - ex)), Color.Transparent), c, r.coerceAtLeast(1f)), r, c)
+                drawRect(IntroBlack.copy(alpha = ((ex - 0.35f) / 0.65f).coerceIn(0f, 1f)))
+            }
+        }
+    }
+}
+
+/** Glass pill with neon edge, breathing glow and a light sweep. */
+@Composable
+private fun EnterButton(alpha: Float, pulse: Float, sweep: Float, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    val glow = 0.35f + 0.35f * kotlin.math.sin(pulse * 2f * Math.PI.toFloat()).let { (it + 1f) / 2f }
+    Box(modifier.alpha(alpha), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val cr = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
+            for (k in 3 downTo 1) {
+                val g = k * 6f
+                drawRoundRect(NeonBlue.copy(alpha = glow * 0.12f * (4 - k)), topLeft = Offset(-g, -g),
+                    size = Size(size.width + 2 * g, size.height + 2 * g), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2 + g))
+            }
+        }
+        Box(
+            Modifier.fillMaxSize().clip(shape)
+                .background(Brush.horizontalGradient(listOf(Color(0xFF0B2A4F), Color(0xFF123E73), Color(0xFF0B2A4F))))
+                .border(1.5.dp, Brush.horizontalGradient(listOf(NeonCyan, NeonBlue, NeonCyan)), shape)
+                .pointerInput(enabled) { if (enabled) detectTapGestures { onClick() } }
+                .drawWithContent {
+                    drawContent()
+                    val x = (sweep * 2.2f - 0.6f) * size.width
+                    drawRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.22f), Color.Transparent),
+                        start = Offset(x - 80f, 0f), end = Offset(x + 80f, size.height)))
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("ENTER", color = Color.White, fontSize = 18.sp, letterSpacing = 6.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(12.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = NeonCyan, modifier = Modifier.size(22.dp))
+            }
+        }
+    }
+}
+
+/** Rotating holographic rings and ticks behind the name. */
+@Composable
+private fun HoloRings(spin: Float, alpha: Float, modifier: Modifier) {
+    Canvas(modifier.alpha(alpha)) {
+        val c = center; val r = size.minDimension / 2
+        drawCircle(NeonBlue.copy(alpha = 0.10f), r * 0.98f, c, style = Stroke(1.5f))
+        rotate(spin, c) {
+            drawArc(NeonCyan.copy(alpha = 0.55f), 0f, 70f, false, Offset(c.x - r * 0.9f, c.y - r * 0.9f), Size(r * 1.8f, r * 1.8f), style = Stroke(3f, cap = StrokeCap.Round))
+            drawArc(NeonBlue.copy(alpha = 0.45f), 180f, 110f, false, Offset(c.x - r * 0.9f, c.y - r * 0.9f), Size(r * 1.8f, r * 1.8f), style = Stroke(3f, cap = StrokeCap.Round))
+            for (i in 0 until 60) {
+                val a = Math.toRadians(i * 6.0).toFloat(); val l = if (i % 5 == 0) 16f else 7f
+                val o = Offset(c.x + kotlin.math.cos(a) * r * 0.98f, c.y + kotlin.math.sin(a) * r * 0.98f)
+                val inner = Offset(c.x + kotlin.math.cos(a) * (r * 0.98f - l), c.y + kotlin.math.sin(a) * (r * 0.98f - l))
+                drawLine(NeonBlue.copy(alpha = 0.35f), inner, o, strokeWidth = 1.5f)
+            }
+        }
+        rotate(-spin * 1.6f, c) {
+            drawArc(SilverText.copy(alpha = 0.25f), 40f, 140f, false, Offset(c.x - r * 0.75f, c.y - r * 0.75f), Size(r * 1.5f, r * 1.5f), style = Stroke(1.5f))
+            drawArc(NeonCyan.copy(alpha = 0.30f), 230f, 60f, false, Offset(c.x - r * 0.75f, c.y - r * 0.75f), Size(r * 1.5f, r * 1.5f), style = Stroke(4f, cap = StrokeCap.Round))
+        }
+    }
+}
+
+/** Thin HUD corner frame around the whole screen with a travelling light. */
+@Composable
+private fun HudFrame(alpha: Float, sweep: Float) {
+    Canvas(Modifier.fillMaxSize().systemBarsPadding().padding(10.dp).alpha(alpha)) {
+        val l = 46.dp.toPx(); val c = NeonBlue.copy(alpha = 0.7f); val sw = 2.dp.toPx()
+        val (w, h) = size.width to size.height
+        drawLine(c, Offset(0f, 0f), Offset(l, 0f), sw); drawLine(c, Offset(0f, 0f), Offset(0f, l), sw)
+        drawLine(c, Offset(w, 0f), Offset(w - l, 0f), sw); drawLine(c, Offset(w, 0f), Offset(w, l), sw)
+        drawLine(c, Offset(0f, h), Offset(l, h), sw); drawLine(c, Offset(0f, h), Offset(0f, h - l), sw)
+        drawLine(c, Offset(w, h), Offset(w - l, h), sw); drawLine(c, Offset(w, h), Offset(w, h - l), sw)
+        val x = sweep * w
+        drawLine(Brush.horizontalGradient(listOf(Color.Transparent, NeonCyan.copy(alpha = 0.8f), Color.Transparent), startX = x - 120f, endX = x + 120f),
+            Offset(x - 120f, 0f), Offset(x + 120f, 0f), strokeWidth = sw)
+        drawLine(Brush.horizontalGradient(listOf(Color.Transparent, NeonCyan.copy(alpha = 0.8f), Color.Transparent), startX = w - x - 120f, endX = w - x + 120f),
+            Offset(w - x - 120f, h), Offset(w - x + 120f, h), strokeWidth = sw)
     }
 }
 
